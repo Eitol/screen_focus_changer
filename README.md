@@ -5,6 +5,10 @@ can be useful to create a shortcut that allows you to switch between monitors / 
 
 ![Image](doc/shortcut.png)
 
+install:
+
+sudo apt install xdotool x11-xserver-utils
+
 
 usage:
 
