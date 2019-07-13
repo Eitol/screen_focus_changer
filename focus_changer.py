@@ -30,7 +30,7 @@ def get_current_windows_position() -> Dict[str, int]:
     """
     active_windows = subprocess.getoutput("xdotool getactivewindow")
     lines = subprocess.getoutput("xdotool getwindowgeometry " + active_windows).split("\n")[1:]
-    y, x = {atoi(x.replace(" (screen", "")) for x in lines[0].split(": ")[1].split(",")}
+    x, y = {atoi(x.replace(" (screen", "")) for x in lines[0].split(": ")[1].split(",")}
     position = {"x": x, "y": y}
     return position
 
