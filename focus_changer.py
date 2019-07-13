@@ -77,7 +77,7 @@ def determine_monitor_to_move(mov: MovementDirection, current_pos: int, n_monito
         return current_pos - 1 if current_pos > 0 else 0
     if mov == MovementDirection.RIGHT:
         return current_pos + 1 if current_pos < n_monitors - 1 else n_monitors - 1
-    return 0 if current_pos == 1 else 0
+    return 0 if current_pos == 1 else 1
 
 
 def get_center_of_monitor(monitor: Dict[str, Any]) -> Dict[str, int]:
