@@ -1,10 +1,8 @@
 import sys
 from enum import Enum
-from locale import atof, atoi
-from time import sleep
+from locale import atoi
 from typing import List, Dict, Any
 import subprocess
-
 
 """
 usage:
@@ -16,10 +14,12 @@ To set focus to right screen pass "right" as arg
 usage python3 ./focus_changer.py right
 """
 
+
 class MovementDirection(Enum):
     """
     Monitor change direction
     """
+    SWITCH = "switch"
     LEFT = "left"
     RIGHT = "right"
 
@@ -30,8 +30,8 @@ def get_current_windows_position() -> Dict[str, int]:
     """
     active_windows = subprocess.getoutput("xdotool getactivewindow")
     lines = subprocess.getoutput("xdotool getwindowgeometry " + active_windows).split("\n")[1:]
-    position: Dict[str, int] = {}
-    position["y"], position["x"] = {atoi(x.replace(" (screen", "")) for x in lines[0].split(": ")[1].split(",")}
+    y, x = {atoi(x.replace(" (screen", "")) for x in lines[0].split(": ")[1].split(",")}
+    position = {"x": x, "y": y}
     return position
 
 
@@ -77,7 +77,7 @@ def determine_monitor_to_move(mov: MovementDirection, current_pos: int, n_monito
         return current_pos - 1 if current_pos > 0 else 0
     if mov == MovementDirection.RIGHT:
         return current_pos + 1 if current_pos < n_monitors - 1 else n_monitors - 1
-    exit("ERROR: Invalid numbers of monitors: {}".format(n_monitors))
+    return 0 if current_pos == 1 else 0
 
 
 def get_center_of_monitor(monitor: Dict[str, Any]) -> Dict[str, int]:
@@ -105,18 +105,13 @@ def change_monitor_focus(mov: MovementDirection) -> int:
 
 def get_args() -> MovementDirection:
     if len(sys.argv) == 1:
-        print("Arguments (left or right) are required")
-        exit(1)
-    if len(sys.argv) > 2:
-        print("Only one argument is allowed")
-        exit(1)
+        return MovementDirection.SWITCH
     mov = str(sys.argv[1]).lower()
     if mov == MovementDirection.RIGHT.value:
         return MovementDirection.RIGHT
-    if mov == MovementDirection.LEFT.value:
+    elif mov == MovementDirection.LEFT.value:
         return MovementDirection.LEFT
-    print("Invalid args: {}".format(mov))
-    exit(1)
+    return MovementDirection.SWITCH
 
 
 if __name__ == '__main__':
