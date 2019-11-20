@@ -12,27 +12,54 @@ python3 ./focus_changer.py left
 
 To set focus to right screen pass "right" as arg
 usage python3 ./focus_changer.py right
+
+To focus on the other side of the current monitor you must
+usage python3 ./focus_changer.py right_inter
+or
+usage python3 ./focus_changer.py left_inter
 """
 
 
-class MovementDirection(Enum):
+class Direction(Enum):
     """
     Monitor change direction
     """
     SWITCH = "switch"
     LEFT = "left"
     RIGHT = "right"
+    RIGHT_INTER = "right_inter"
+    LEFT_INTER = "left_inter"
 
 
 def get_current_windows_position() -> Dict[str, int]:
     """
-    :return: The current active windows position. i.e: { "x": 140, "y": 940 }
+    :return: The current active windows position. i.e: { "x": 140, "y": 940, "side": MovementDirection.LEFT }
+    The "side" field is related to the inter screen position
+    i.e:
+    Imagine a monitor with this res: 1920x1080
+    "(x)" is the position of the mouse at the moment of the script execution. For example (x=400,y=300)
+    Since x is located on the left side of the screen then the "side" field will have the value LEFT.
+    LEFT Otherwise it will have the value RIGHT.
+
+               960 (the middle of screen)
+                |
+                v
+    _________________________
+    |                       |
+    |   (x)                 |
+    |                       |
+    |                       |
+    -------------------------
     """
     active_windows = subprocess.getoutput("xdotool getactivewindow")
     lines = subprocess.getoutput("xdotool getwindowgeometry " + active_windows).split("\n")[1:]
     x, y = [atoi(x.replace(" (screen", "")) for x in lines[0].split(": ")[1].split(",")]
-    position = {"x": x, "y": y}
-    return position
+    x_resolution = int(lines[1].replace(" Geometry:", "").split("x")[0])
+    return {
+        "x": x,
+        "y": y,
+        "side": Direction.LEFT if x < (x_resolution / 2) else Direction.RIGHT
+    }
 
 
 def get_all_monitors() -> List[Dict[str, Any]]:
@@ -42,6 +69,11 @@ def get_all_monitors() -> List[Dict[str, Any]]:
         {'hr': 1366, 'vr': 768, 'ho': 0, 'vo': 914, 'name': 'eDP-1-1'},
         {'hr': 2560, 'vr': 1440, 'ho': 1366, 'vo': 0, 'name': 'HDMI-1-1'},
         ]
+    hr: Horizontal resolution
+    vr: Vertical resolution
+    ho: Horizontal offset
+    vo: Vertical offset
+    name: The screen name
     """
     # all_monitors_xrand_resp_ is string like this:
     #    Monitors: 2
@@ -67,51 +99,90 @@ def get_all_monitors() -> List[Dict[str, Any]]:
 
 
 def get_current_monitor_pos(monitors: List[Dict[str, Any]], pos: Dict[str, int]) -> int:
+    """
+    Return the current monitor position
+    Monitors are represented as arrays with base index 0, where the left-most
+    monitor has the lowest index.
+
+    i.e: If the screen focus in the screen 0 then return 0
+
+      Screen 0        Screen 1
+       |                |
+       v                v
+    ____________   _____________
+    |           |  |            |
+    |    (x)    |  |            |
+    |           |  |            |
+    -------------  --------------
+    """
     for i in range(len(monitors)):
         if monitors[i]["ho"] <= pos["x"] < monitors[i]["hr"] + monitors[i]["ho"]:
             return i
 
 
-def determine_monitor_to_move(mov: MovementDirection, current_pos: int, n_monitors: int) -> int:
-    if mov == MovementDirection.LEFT:
+def determine_monitor_to_move(mov: Direction, current_pos: int, n_monitors: int) -> int:
+    """
+    :param mov: Current mov
+    :param current_pos: Current pos
+    :param n_monitors: Number of monitors in the monitors array
+    """
+    if n_monitors == 1:
+        return 0
+    if mov == Direction.LEFT:
         return current_pos - 1 if current_pos > 0 else 0
-    if mov == MovementDirection.RIGHT:
+    if mov == Direction.RIGHT:
         return current_pos + 1 if current_pos < n_monitors - 1 else n_monitors - 1
     return 0 if current_pos == 1 else 1
 
 
-def get_center_of_monitor(monitor: Dict[str, Any]) -> Dict[str, int]:
+def get_center_of_monitor(monitor: Dict[str, Any], mov: Direction) -> Dict[str, int]:
+    """
+    Return the center of the screen.
+    If the movement is "inter" then add an positive or offset for left or right respectively
+    :param monitor: The monitor object dictionary
+    :param mov: The desired movement
+    :return:
+    """
+    if 'inter' in mov.value:
+        offset_x = -25 if mov == Direction.LEFT_INTER else 25
+    else:
+        offset_x = 0
     return {
-        "x": (monitor["hr"] / 2) + monitor["ho"],
+        "x": (monitor["hr"] / 2) + monitor["ho"] + offset_x,
         "y": (monitor["vr"] / 2) + monitor["vo"],
     }
 
 
-def change_monitor_focus(mov: MovementDirection) -> int:
+def change_monitor_focus(mov: Direction) -> int:
     pos = get_current_windows_position()
     monitors = get_all_monitors()
     current_monitor_pos = get_current_monitor_pos(monitors, pos)
-    new_monitor_pos = determine_monitor_to_move(mov, current_monitor_pos, len(monitors))
+    if mov in [Direction.LEFT_INTER, Direction.RIGHT_INTER]:
+        new_monitor_pos = current_monitor_pos
+    else:
+        new_monitor_pos = determine_monitor_to_move(mov, current_monitor_pos, len(monitors))
+
     if new_monitor_pos == current_monitor_pos:
-        return new_monitor_pos
-    center_of_screen = get_center_of_monitor(monitors[new_monitor_pos])
+        mov = Direction.RIGHT_INTER if pos['side'] == Direction.LEFT else Direction.LEFT_INTER
+
+    center_of_screen = get_center_of_monitor(monitors[new_monitor_pos], mov)
     query_get_window_at = "xdotool mousemove {} {} getmouselocation --shell mousemove restore & echo $WINDOW ".format(
         center_of_screen["x"],
         center_of_screen["y"]
     )
     window_id = subprocess.getoutput(query_get_window_at).split("WINDOW=")[1]
     subprocess.getoutput("xdotool windowactivate {}".format(window_id))
+    return new_monitor_pos
 
 
-def get_args() -> MovementDirection:
+def get_args() -> Direction:
     if len(sys.argv) == 1:
-        return MovementDirection.SWITCH
-    mov = str(sys.argv[1]).lower()
-    if mov == MovementDirection.RIGHT.value:
-        return MovementDirection.RIGHT
-    elif mov == MovementDirection.LEFT.value:
-        return MovementDirection.LEFT
-    return MovementDirection.SWITCH
+        return Direction.SWITCH
+    mov = str(sys.argv[1]).upper()
+    try:
+        return Direction[mov]
+    except KeyError as e:
+        print("ERROR: invalid mov: {}".format(mov))
 
 
 if __name__ == '__main__':
